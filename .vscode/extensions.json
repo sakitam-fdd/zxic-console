@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "christian-kohler.path-intellisense",
+    "vscode-icons-team.vscode-icons",
+    "davidanson.vscode-markdownlint",
+    "ms-azuretools.vscode-docker",
+    "bradlc.vscode-tailwindcss",
+    "redhat.vscode-yaml",
+    "csstools.postcss",
+    "mikestead.dotenv",
+    "eamodio.gitlens"
+  ]
+}
