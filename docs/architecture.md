@@ -30,6 +30,7 @@ main.tsx
 - 开发环境 `PUBLIC_BASE_URL=/api`（Rsbuild 默认 `PUBLIC_` 前缀），由 `device-proxy.ts` 以原始 TCP 转发到 `192.168.0.1`，规避跨域，并规范化固件混用 LF/CRLF 的畸形 HTTP 头（Node 22 严格解析会直接 500）。
 - 生产环境使用 `.` 相对地址，适配固件内嵌 Web 根目录。
 - 服务端口与资源前缀使用非公开变量 `PORT` / `ASSET_PREFIX`，仅在 `rsbuild.config.ts` 读取。
+- Mock 模式：`PUBLIC_MOCK=true`（`--env-mode mock`）。`src/features/device/mock/` 使用脱敏 HAR 快照应答 CGI，不挂载设备代理。本地 `pnpm dev:mock`；CI `pnpm build:mock`；GitHub Pages 部署 mock 构建产物。
 - 根据 `public/serverConfig.json` 的 `is_r186x` 选择 CGI 路径。
 - 写操作保持原固件 `goformId`、字段名与 Base64 编码约定。
 

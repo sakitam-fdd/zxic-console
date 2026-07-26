@@ -34,7 +34,22 @@ pnpm dev
 
 开发服务默认运行于 `http://localhost:8848`，并将 `/api` 代理到 `http://192.168.0.1`。设备地址可在 `rsbuild.config.ts` 中调整。
 
-环境变量遵循 [Rsbuild 规范](https://rsbuild.rs/guide/advanced/env-vars)：客户端仅注入 `PUBLIC_*`（如 `PUBLIC_BASE_URL`）；`PORT`、`ASSET_PREFIX` 仅供构建配置读取。按 mode 使用 `.env` / `.env.development` / `.env.production` / `.env.staging`。
+环境变量遵循 [Rsbuild 规范](https://rsbuild.rs/guide/advanced/env-vars)：客户端仅注入 `PUBLIC_*`（如 `PUBLIC_BASE_URL`）；`PORT`、`ASSET_PREFIX` 仅供构建配置读取。按 mode 使用 `.env` / `.env.development` / `.env.production` / `.env.staging` / `.env.mock`。
+
+## Mock 离线调试
+
+未连接设备时可使用脱敏 HAR 快照：
+
+```bash
+pnpm dev:mock
+```
+
+任意至少 4 位密码即可登录。数据源见 `src/features/device/mock/fixture.json`（已去除密码、IMEI、真实 MAC/主机名等敏感信息）。
+
+```bash
+pnpm build:mock
+pnpm preview:mock
+```
 
 ## 校验与构建
 
@@ -43,11 +58,12 @@ pnpm check
 pnpm typecheck
 pnpm build
 pnpm build:staging
+pnpm build:mock
 ```
 
-生产产物位于 `dist/`。构建使用相对静态资源路径和 Hash Router，可直接部署到设备 Web 根目录。
+生产产物位于 `dist/`。设备构建使用相对静态资源路径和 Hash Router，可直接部署到设备 Web 根目录。
 
-CI（`.github/workflows/ci.yml`）在 PR 与 `main`/`dev` 推送时执行校验与构建；推送到 `main`/`dev` 时额外打包 `auto_install` 制品。
+CI（`.github/workflows/ci.yml`）会分别校验 **production** 与 **mock** 构建；推送到 `main`/`dev` 时额外打包设备 `auto_install` 制品。Mock 演示站由 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) 部署到 GitHub Pages（需在仓库 Settings → Pages 启用 GitHub Actions）。
 
 ## 项目结构
 

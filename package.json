@@ -6,10 +6,13 @@
   "description": "ZXIC Console — modern React control console for portable Wi-Fi devices",
   "scripts": {
     "dev": "rsbuild dev",
+    "dev:mock": "rsbuild dev --env-mode mock",
     "serve": "pnpm dev",
     "build": "rsbuild build",
     "build:staging": "rsbuild build --env-mode staging",
+    "build:mock": "rsbuild build --env-mode mock",
     "preview": "rsbuild preview",
+    "preview:mock": "rsbuild preview --env-mode mock",
     "preview:build": "pnpm build && pnpm preview",
     "typecheck": "tsc --noEmit",
     "check": "biome check .",

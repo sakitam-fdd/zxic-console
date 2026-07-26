@@ -40,7 +40,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build
+      - name: Build (mock)
+        run: pnpm build:mock
+
+      - name: Build (device / production)
         run: pnpm build
 
       - name: Package device web

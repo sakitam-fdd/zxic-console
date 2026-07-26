@@ -8,6 +8,8 @@ import { Button, Card, Input } from "@/components/ui/primitives";
 import { login } from "@/features/device/api";
 import { useDeviceStore } from "@/features/device/store";
 
+const mockMode = import.meta.env.PUBLIC_MOCK === "true";
+
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
@@ -104,7 +106,9 @@ export default function LoginPage() {
             </p>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight">连接设备控制台</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              设备登录只校验管理密码，不校验用户名。请使用设备标签或你已设置的密码。
+              {mockMode
+                ? "当前为 Mock 离线演示，不连接真实设备。输入任意至少 4 位密码即可进入。"
+                : "设备登录只校验管理密码，不校验用户名。请使用设备标签或你已设置的密码。"}
             </p>
           </div>
 
@@ -140,7 +144,9 @@ export default function LoginPage() {
             </Button>
           </form>
           <p className="mt-6 text-left text-xs leading-5 text-muted-foreground">
-            密码至少 4 位。忘记密码时请查看设备标签或联系管理员。
+            {mockMode
+              ? "Mock 数据来自脱敏 HAR 快照，仅供界面调试。"
+              : "密码至少 4 位。忘记密码时请查看设备标签或联系管理员。"}
           </p>
         </Card>
       </div>

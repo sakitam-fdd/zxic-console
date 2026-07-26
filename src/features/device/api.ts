@@ -1,3 +1,9 @@
+import {
+  isMockEnabled,
+  mockGetApi,
+  mockPostApi,
+  mockServerConfig,
+} from "@/features/device/mock/server";
 import type { ClientDevice, DeviceRecord, ServerConfig, SmsMessage } from "@/features/device/types";
 import { safeBtoa } from "@/lib/utils";
 
@@ -36,6 +42,7 @@ export function configureDeviceApi(config: ServerConfig) {
 }
 
 export async function loadServerConfig(): Promise<ServerConfig> {
+  if (isMockEnabled()) return mockServerConfig();
   try {
     const response = await fetch("./serverConfig.json", { cache: "no-store" });
     if (!response.ok) return {};
@@ -46,6 +53,7 @@ export async function loadServerConfig(): Promise<ServerConfig> {
 }
 
 export async function getApi(query: string, hide = false) {
+  if (isMockEnabled()) return mockGetApi(query);
   const params = `${query}${query ? "&" : ""}_=${Date.now()}${hide ? "&hide=true" : ""}`;
   const response = await fetch(`${endpoint("get")}?${params}`, {
     headers: { Accept: "application/json, text/javascript, */*; q=0.01" },
@@ -59,6 +67,7 @@ export function getValues(fields: string[], hide = false) {
 }
 
 export async function postApi(data: Record<string, unknown>) {
+  if (isMockEnabled()) return mockPostApi(data);
   const body = new URLSearchParams();
   Object.entries(data).forEach(([key, value]) => {
     if (value !== undefined && value !== null) body.set(key, String(value));

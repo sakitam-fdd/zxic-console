@@ -25,6 +25,7 @@ import { useDeviceStore } from "@/features/device/store";
 import { cn, normalizeCarrier } from "@/lib/utils";
 
 function Brand({ compact = false }: { compact?: boolean }) {
+  const mockMode = import.meta.env.PUBLIC_MOCK === "true";
   return (
     <div className={cn("flex items-center gap-3", compact && "justify-center")}>
       <BrandBadge compact={compact} />
@@ -32,7 +33,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
         <div className="min-w-0">
           <p className="truncate font-semibold tracking-tight">ZXIC Console</p>
           <p className="truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            Device control
+            {mockMode ? "Mock demo" : "Device control"}
           </p>
         </div>
       ) : null}
