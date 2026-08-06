@@ -1,6 +1,6 @@
 {
   "name": "zxic-console",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "description": "ZXIC Console — modern React control console for portable Wi-Fi devices",
