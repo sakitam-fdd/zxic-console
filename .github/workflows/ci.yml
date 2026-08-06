@@ -46,17 +46,80 @@ jobs:
       - name: Build (device / production)
         run: pnpm build
 
-      - name: Package device web
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-        run: |
-          mkdir auto_install
-          mv dist auto_install/web
-          cp docs/install.bat auto_install/
-
-      - name: Upload artifact
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-        uses: actions/upload-artifact@v4
+  release:
+    name: Tag and release device package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
-          name: ${{ github.ref_name == 'dev' && 'auto_install_dev' || 'auto_install' }}
-          path: auto_install
-          if-no-files-found: error
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Increment patch version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          IFS=. read -r major minor patch <<< "$version"
+          next_version="$major.$minor.$((patch + 1))"
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version=process.argv[1]; fs.writeFileSync('package.json', JSON.stringify(p, null, 2)+'\\n');" "$next_version"
+          pnpm install --lockfile-only
+          echo "version=$next_version" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag does not exist
+        run: |
+          git fetch --tags --force
+          if git rev-parse "refs/tags/v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.version.outputs.version }} already exists" >&2
+            exit 1
+          fi
+
+      - name: Commit version and tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml
+          git commit -m "chore: release v${VERSION} [skip ci]"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin HEAD:main
+          git push origin "v${VERSION}"
+
+      - name: Build production package
+        run: pnpm build
+
+      - name: Package device release
+        run: bash scripts/package-device-release.sh "${{ steps.version.outputs.version }}" release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: ZXIC Console v${{ steps.version.outputs.version }}
+          body: |
+            面向普通用户的设备安装包。
+
+            下载 `zxic-console-v${{ steps.version.outputs.version }}-device.zip`，解压后阅读 `INSTALL.md`，再运行 `install.bat`。
+
+            压缩包包含 `web/`、`install.bat`、`INSTALL.md` 和 `SHA256SUMS`。安装脚本当前仅支持硬件版本 `F231ZC_V1.0_OM_OM`，刷入前请确认备份和设备连接条件。
+          files: release/zxic-console-v${{ steps.version.outputs.version }}-device.zip
+          generate_release_notes: true

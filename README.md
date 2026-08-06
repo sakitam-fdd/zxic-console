@@ -63,7 +63,11 @@ pnpm build:mock
 
 生产产物位于 `dist/`。设备构建使用相对静态资源路径和 Hash Router，可直接部署到设备 Web 根目录。
 
-CI（`.github/workflows/ci.yml`）会分别校验 **production** 与 **mock** 构建；推送到 `main`/`dev` 时额外打包设备 `auto_install` 制品。Mock 演示站由 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) 部署到 GitHub Pages（需在仓库 Settings → Pages 启用 GitHub Actions）。
+CI 会在 Pull Request 和 `main`/`dev` 推送时执行检查与构建。推送到 `main` 且验证成功后，会自动递增 patch 版本、创建 `vX.Y.Z` Tag 和 GitHub Release。普通用户只需在 Release 下载唯一资源包：
+
+`zxic-console-vX.Y.Z-device.zip`
+
+解压后资源包包含 `web/`、`install.bat`、`INSTALL.md` 和 `SHA256SUMS`。请先阅读 `INSTALL.md`；安装脚本目前仅支持硬件版本 `F231ZC_V1.0_OM_OM`，并会在刷写前备份原 Web 目录。Mock 演示站由 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) 部署到 GitHub Pages（需在仓库 Settings → Pages 启用 GitHub Actions）。
 
 ## 项目结构
 

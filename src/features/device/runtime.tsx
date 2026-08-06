@@ -54,11 +54,11 @@ export function DeviceRuntime() {
   useEffect(() => {
     let active = true;
     async function bootstrap() {
-      const config = await loadServerConfig();
-      if (!active) return;
-      configureDeviceApi(config);
-      setConfig(config);
       try {
+        const config = await loadServerConfig();
+        if (!active) return;
+        configureDeviceApi(config);
+        setConfig(config);
         const session = await checkSession();
         if (!active) return;
         setAuthStatus(session.loginfo === "ok" ? "authenticated" : "anonymous");
@@ -69,6 +69,7 @@ export function DeviceRuntime() {
     void bootstrap();
     return () => {
       active = false;
+      infoLoaded.current = false;
     };
   }, [setAuthStatus, setConfig]);
 
@@ -79,7 +80,11 @@ export function DeviceRuntime() {
       const network = await getValues(NETWORK_FIELDS, true);
       if (network.loginfo && network.loginfo !== "ok") {
         useDeviceStore.getState().reset();
-        toast.warning("设备会话已失效，请重新登录");
+        infoLoaded.current = false;
+        if (!didWarn.current) {
+          toast.warning("设备会话已失效，请重新登录");
+          didWarn.current = true;
+        }
         return;
       }
       updateNetwork(network);

@@ -1,240 +1,282 @@
 @echo off
-CHCP 65001
-CLS
+setlocal EnableExtensions EnableDelayedExpansion
+chcp 65001 >nul
+cls
 
-adb version
-IF NOT %errorlevel% EQU 0 (
-    ECHO 请安装ADB 
-    GOTO END
-)
-curl -V
-IF NOT %errorlevel% EQU 0 (
-    ECHO 请安装curl 
-    GOTO END
-)
+set "SCRIPT_DIR=%~dp0"
+set "WEB_DIR=%SCRIPT_DIR%web"
+set "BACKUP_DIR=%SCRIPT_DIR%web_backup"
+set "DEVICE_WEB=/etc_ro/web"
+set "SUPPORTED_HW=F231ZC_V1.0_OM_OM"
+set "WAIT_SECONDS=0"
 
-CLS
-
-@REM 获取后台地址
-ECHO 欢迎使用一键安装脚本, 在开始之前请认真阅读以下内容 
-ECHO 1. 请确保你的设备已开机, 并通过USB成功连接至电脑, 且后台登录密码为admin 
-ECHO 2. 请确保刷入期间没有其他ADB设备接入电脑 
-ECHO 3. 刷入期间, 确保设备与电脑不断开连接, 如拔出设备、关闭电脑等 
-ECHO 4. 刷入期间, 请勿登录设备后台 
-ECHO 请输入设备IP地址: 
-SET /p _device_ip= 
-
-@REM 登录后台并获取相关数据
-SET _http_res=NULL
-FOR /f "tokens=*" %%A IN ('curl -m 2 -s -X POST -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" -d "goformId=LOGIN&password=YWRtaW4=" "http://%_device_ip%/goform/goform_set_cmd_process"') DO SET _http_res=%%A
-ECHO %_http_res%
-IF NOT %_http_res% == {"result":"0"} (
-    ECHO 登录失败,请检查设备是否连接或后台地址是否正确 
-    GOTO END
+if not exist "%WEB_DIR%\index.html" (
+    echo [错误] 未找到 "%WEB_DIR%\index.html"。
+    echo 请将压缩包完整解压后，从压缩包根目录运行本脚本。
+    goto FAIL
 )
 
-@REM 获取数据,校验硬件版本是否支持
-ECHO 登录成功, 正在获取后台数据 
-@REM 延迟一秒
-TIMEOUT /t 1 > nul
-SET _http_res=NULL
-FOR /f "tokens=*" %%A IN ('curl -m 2 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_get_cmd_process?cmd=hw_version"') DO SET _http_res=%%A
-ECHO %_http_res%
-IF NOT %_http_res% == {"hw_version":"F231ZC_V1.0_OM_OM"} (
-    ECHO 暂不支持此设备,如果你想测试是否支持,可使用随身Wifi助手刷入,记得备份原版后台 
-    GOTO END
+adb version >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未找到 ADB，请安装 Android Platform Tools 并加入 PATH。
+    goto FAIL
+)
+curl --version >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未找到 curl，请安装 curl 并加入 PATH。
+    goto FAIL
+)
+powershell -NoProfile -Command "exit 0" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未找到 PowerShell，无法执行安全的本地空间计算。
+    goto FAIL
 )
 
-ECHO 硬件版本校验成功, 即将开启ADB, 在设备重启之前请勿关闭或拔出设备, 否则将可能导致设备损坏, 按任意键继续 
-PAUSE
-ECHO 正在开启ADB 
-@REM 延迟一秒
-TIMEOUT /t 1 > nul
-curl -m 10 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=2"
-@REM 危险操作, 即时检测 
-IF %errorlevel% NEQ 0 GOTO enable_adb_error
-TIMEOUT /t 2 > nul
-SET _http_res=NULL
-FOR /f "tokens=*" %%A IN ('curl -m 10 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=1"') DO SET _http_res=%%A
-IF %errorlevel% NEQ 0 GOTO enable_adb_error
-ECHO %_http_res%
-IF NOT %_http_res% == {"result":"set_devicemode successfully!"} (
-    ECHO 开启ADB失败 
-    GOTO enable_adb_error
+echo ============================================================
+echo                 ZXIC Console 一键安装
+ echo ============================================================
+echo 支持硬件：%SUPPORTED_HW%
+echo.
+echo 刷写前请确认：
+echo   1. 设备已开机，USB 已连接，后台密码为 admin。
+echo   2. 电脑只连接这一台 ADB 设备，状态必须为 device。
+echo   3. 刷写期间不要断电、拔线、关闭窗口或登录设备后台。
+echo   4. 已准备好备份空间；脚本会把原后台保存为 web_backup。
+echo.
+set /p "DEVICE_IP=请输入设备 IP 地址: "
+if not defined DEVICE_IP (
+    echo [错误] IP 地址不能为空。
+    goto FAIL
 )
 
-ECHO 开启ADB成功, 正在重启设备 
-@REM 延迟一秒
-TIMEOUT /t 1 > nul
-curl -m 2 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=REBOOT_DEVICE"
-ECHO OK
+set "SET_URL=http://%DEVICE_IP%/goform/goform_set_cmd_process"
+set "GET_URL=http://%DEVICE_IP%/goform/goform_get_cmd_process"
+set "HTTP_RES="
 
-ECHO 设备已重启 
-ECHO 正在等待设备开机... 
-@REM 延迟5秒
-TIMEOUT /t 5 > nul
-:ping_loop
-PING -n 1 -w 1000 %_device_ip% > nul
-IF %errorlevel% EQU 0 GOTO online
-TIMEOUT /t 5 > nul
-ECHO 正在等待设备开机... 
-GOTO ping_loop
-
-:online
-ECHO 设备已上线, 正在连接ADB 
-@REM 计算ADB设备数量
-SET _device_count=0
-@REM 获取当前连接的Android设备列表
-adb devices > nul
-adb devices > nul
-adb devices > nul
-FOR /f "tokens=1 delims= " %%a IN ('adb devices') DO (
-    @REM 判断设备状态是否为"device"
-    IF NOT "%%a" == "List" (
-        SET /a _device_count+=1
-    )
+echo.
+echo [1/10] 正在登录设备后台...
+for /f "delims=" %%A in ('curl --fail-with-body -m 5 -s -X POST -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" -d "goformId=LOGIN^&password=YWRtaW4=" "%SET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+if not defined HTTP_RES (
+    echo [错误] 登录请求失败或设备无响应。
+    goto FAIL
 )
-IF NOT %_device_count% == 1 (
-    ECHO ADB设备数量为%_device_count%, 请检查设备ADB是否成功开启, 或拔出其他ADB设备  
-    GOTO END
+powershell -NoProfile -Command "$j = ConvertFrom-Json $args[0]; if ($j.result -ne '0') { exit 1 }" "!HTTP_RES!" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 登录失败，请确认设备 IP 和后台密码是否为 admin。
+    goto FAIL
 )
 
-@REM 测试连接ADB
-TIMEOUT /t 1 > nul
-SET _adb_output=NULL
-FOR /f "tokens=*" %%A IN ('adb shell echo connected') DO SET "_adb_output=%%A"
-IF NOT "%_adb_output%" == "connected" (
-    ECHO ADB连接失败 
-    GOTO END
+echo [2/10] 正在校验硬件版本...
+set "HTTP_RES="
+for /f "delims=" %%A in ('curl --fail-with-body -m 5 -s -G --data-urlencode "cmd=hw_version" "%GET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+if not defined HTTP_RES (
+    echo [错误] 无法读取硬件版本。
+    goto FAIL
+)
+echo !HTTP_RES!| findstr /r /c:"{\"hw_version\":\"%SUPPORTED_HW%\"}" >nul
+if errorlevel 1 (
+    echo [错误] 设备硬件版本不受支持。
+    echo 期望：%SUPPORTED_HW%
+    echo 返回：!HTTP_RES!
+    goto FAIL
 )
 
-@REM 检测设备WEB目录是否正确
-ECHO ADB连接成功, 正在检测设备WEB目录 
-TIMEOUT /t 1 > nul
-SET _adb_output=NULL
-FOR /f "tokens=*" %%A IN ('adb shell ls /etc_ro/web/index.html') DO SET "_adb_output=%%A"
-ECHO %_adb_output%|findstr "^No such file or directory" >nul
-IF %errorlevel% EQU 0 (
-    ECHO 设备WEB目录检测失败 
-    GOTO END
+echo [3/10] 正在开启 ADB 调试模式...
+set "HTTP_RES="
+for /f "delims=" %%A in ('curl --fail-with-body -m 10 -s -G --data-urlencode "goformId=SET_DEVICE_MODE" --data-urlencode "debug_enable=2" "%SET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+if errorlevel 1 (
+    echo [错误] 开启 ADB 调试模式请求失败。
+    goto ENABLE_ERROR
+)
+timeout /t 2 >nul
+set "HTTP_RES="
+for /f "delims=" %%A in ('curl --fail-with-body -m 10 -s -G --data-urlencode "goformId=SET_DEVICE_MODE" --data-urlencode "debug_enable=1" "%SET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+if not defined HTTP_RES goto ENABLE_ERROR
+echo !HTTP_RES!| findstr /c:"set_devicemode successfully" >nul
+if errorlevel 1 goto ENABLE_ERROR
+
+echo [4/10] 正在重启设备...
+curl --fail-with-body -m 5 -s -G --data-urlencode "goformId=REBOOT_DEVICE" "%SET_URL%" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 重启请求失败。
+    goto ENABLE_ERROR
 )
 
-@REM 备份原WEB后台
-ECHO 设备WEB目录检测成功, 正在备份原WEB后台 
-TIMEOUT /t 1 > nul
-adb pull /etc_ro/web ./web_backup
-IF NOT %errorlevel% EQU 0 (
-    ECHO 备份原WEB后台失败 
-    GOTO END
+echo 正在等待设备网络恢复（最多 90 秒）...
+set /a WAIT_SECONDS=0
+:WAIT_NETWORK
+ping -n 1 -w 1000 "%DEVICE_IP%" >nul 2>&1
+if not errorlevel 1 goto NETWORK_READY
+set /a WAIT_SECONDS+=1
+if !WAIT_SECONDS! GEQ 90 (
+    echo [错误] 等待设备网络恢复超时。
+    goto FAIL
 )
-ECHO 备份原WEB后台成功, 备份文件在web_backup目录, 请妥善保存 
+timeout /t 1 >nul
+goto WAIT_NETWORK
 
-@REM 计算剩余空间大小 
-ECHO 正在计算设备剩余空间, 以供参考 
-TIMEOUT /t 1 > nul
-SET _available=NULL
-FOR /f "tokens=1,4 delims= " %%A IN ('adb shell df -h') DO (
-    IF "%%A" == "/dev/mtdblock4" (
-        SET _available=%%B
-    )
+:NETWORK_READY
+echo [5/10] 正在等待唯一的 ADB 设备上线...
+set /a WAIT_SECONDS=0
+:WAIT_ADB
+set /a DEVICE_COUNT=0
+set "ADB_SERIAL="
+for /f "skip=1 tokens=1,2" %%A in ('adb devices 2^>nul') do if "%%B" == "device" (
+    set /a DEVICE_COUNT+=1
+    set "ADB_SERIAL=%%A"
 )
-ECHO 当前设备剩余空间为: %_available% 
-
-SET _web_backup_size=NULL
-FOR /f "tokens=3,5 delims= " %%A IN ('dir web_backup /s') DO (
-    IF "%%B" == "free" (
-        GOTO get_web_backup_size
-    )
-    SET _web_backup_size=%%A
+if "!DEVICE_COUNT!" == "1" goto ADB_READY
+set /a WAIT_SECONDS+=1
+if !WAIT_SECONDS! GEQ 90 (
+    echo [错误] 未能在 90 秒内检测到唯一的 ADB device。
+    echo 当前 device 数量：!DEVICE_COUNT!
+    echo 请拔出其他设备并确认 USB 调试已开启。
+    goto FAIL
 )
-:get_web_backup_size
-ECHO 原WEB大小为: %_web_backup_size%B
+timeout /t 1 >nul
+goto WAIT_ADB
 
-SET _web_size=NULL
-FOR /f "tokens=3,5 delims= " %%A IN ('dir web /s') DO (
-    IF "%%B" == "free" (
-        GOTO get_web_size
-    )
-    SET _web_size=%%A
-)
-:get_web_size
-ECHO 新WEB大小为: %_web_size%B 
-
-ECHO 请自行计算空间是否能够刷入, 如果空间不足, 刷入后会丢失后台 
-ECHO 计算规则为: 设备剩余空间 + 原WEB大小 大于 新WEB大小 
-ECHO 确认刷入请输入 Y 并回车, 否则请输入 N 并回车  
-SET /p _confirm= 
-IF NOT "%_confirm%" == "Y" (
-    ECHO 已取消刷入 
-    GOTO END
+:ADB_READY
+set "ADB_TARGET=adb -s !ADB_SERIAL!"
+for /f "delims=" %%A in ('!ADB_TARGET! shell echo connected 2^>nul') do set "ADB_OUTPUT=%%A"
+if not "!ADB_OUTPUT!" == "connected" (
+    echo [错误] ADB 连接测试失败。
+    goto FAIL
 )
 
-ECHO 确认刷入, 正在检测设备WEB目录是否可写 
-TIMEOUT /t 1 > nul
-@REM 重新挂载根目录为可读写
-adb shell mount -o rw,remount /
-TIMEOUT /t 1 > nul
-@REM 测试读写
-adb shell touch /etc_ro/web/test.txt
-TIMEOUT /t 1 > nul
-SET _adb_output=NULL
-FOR /f "tokens=*" %%A IN ('adb shell ls /etc_ro/web/test.txt') DO SET "_adb_output=%%A"
-ECHO %_adb_output%|findstr "^No such file or directory" >nul
-IF %errorlevel% EQU 0 (
-    ECHO WEB目录不可写 
-    GOTO END
+echo [6/10] 正在检查设备 Web 目录...
+!ADB_TARGET! shell ls "%DEVICE_WEB%/index.html" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 设备不存在 %DEVICE_WEB%/index.html，已停止刷写。
+    goto FAIL
 )
 
-ECHO 读写测试通过, 正在删除原WEB后台 
-TIMEOUT /t 1 > nul
-adb shell rm -rf /etc_ro/web
-TIMEOUT /t 1 > nul
-ECHO 正在刷入新后台, 将耗时约30S, 请耐心等待 
-adb push web /etc_ro/
-
-@REM 验证刷入是否成功
-ECHO 刷入完成, 正在验证是否刷入成功 
-TIMEOUT /t 1 > nul
-SET _adb_output=NULL
-FOR /f "tokens=*" %%A IN ('adb shell ls /etc_ro/web/index.html') DO SET "_adb_output=%%A"
-ECHO %_adb_output%|findstr "^No such file or directory" >nul
-IF %errorlevel% EQU 0 (
-    ECHO 刷入失败 
-    GOTO END
+if exist "%BACKUP_DIR%" (
+    echo [错误] 已存在 "%BACKUP_DIR%"。
+    echo 请先将旧备份移到安全位置后再运行，脚本不会覆盖备份。
+    goto FAIL
 )
 
-ECHO 刷入成功, 请打开%_device_ip%查看新后台 
+echo [7/10] 正在备份原 Web 后台...
+!ADB_TARGET! pull "%DEVICE_WEB%" "%BACKUP_DIR%" >nul
+if errorlevel 1 (
+    echo [错误] 原 Web 后台备份失败。
+    goto FAIL
+)
+if not exist "%BACKUP_DIR%\index.html" (
+    echo [错误] 备份目录缺少 index.html，已停止刷写。
+    goto FAIL
+)
+echo 原后台已备份到：%BACKUP_DIR%
 
-ECHO 是否关闭设备ADB?  
-ECHO 确认关闭请输入 Y 并回车, 否则请输入 N 并回车  
-SET /p _confirm= 
-IF NOT "%_confirm%" == "Y" (
-    ECHO 设备ADB将不会被关闭, 您可在后台 高级设置 - 其他设置 - 中兴微ADB 自行关闭 
-    GOTO END
+echo [8/10] 正在检查空间...
+set "AVAILABLE_KB="
+for /f "skip=1 tokens=4" %%A in ('!ADB_TARGET! shell df -k "%DEVICE_WEB%" 2^>nul') do if not defined AVAILABLE_KB set "AVAILABLE_KB=%%A"
+if not defined AVAILABLE_KB (
+    echo [错误] 无法读取设备剩余空间。
+    goto FAIL
+)
+for /f "delims=" %%A in ('powershell -NoProfile -Command "if ('%AVAILABLE_KB%' -notmatch '^[0-9]+$') { exit 1 }"') do set "SPACE_VALID=%%A"
+!ADB_TARGET! shell du -k -s "%DEVICE_WEB%" > "%TEMP%\zxic-web-size.txt" 2>nul
+if errorlevel 1 goto FAIL
+set "OLD_WEB_KB="
+for /f "tokens=1" %%A in (%TEMP%\zxic-web-size.txt) do if not defined OLD_WEB_KB set "OLD_WEB_KB=%%A"
+if not defined OLD_WEB_KB (
+    echo [错误] 无法读取设备原 Web 大小。
+    goto FAIL
+)
+set "NEW_BYTES="
+for /f "delims=" %%A in ('powershell -NoProfile -Command "(Get-ChildItem -LiteralPath '%WEB_DIR%' -Recurse -File | Measure-Object -Property Length -Sum).Sum"') do set "NEW_BYTES=%%A"
+if not defined NEW_BYTES set "NEW_BYTES=0"
+for /f "delims=" %%A in ('powershell -NoProfile -Command "[math]::Ceiling([double](!NEW_BYTES!)/1024)"') do set "NEW_KB=%%A"
+set /a AVAILABLE_KB_NUM=AVAILABLE_KB
+set /a OLD_WEB_KB_NUM=OLD_WEB_KB
+set /a NEW_KB_NUM=NEW_KB
+set /a PROJECTED_KB=AVAILABLE_KB_NUM+OLD_WEB_KB_NUM
+if !PROJECTED_KB! LSS !NEW_KB_NUM! (
+    echo [错误] 设备空间不足。
+    echo 可用空间：!AVAILABLE_KB_NUM! KB，原 Web：!OLD_WEB_KB_NUM! KB，新 Web：!NEW_KB_NUM! KB。
+    del /q "%TEMP%\zxic-web-size.txt" >nul 2>&1
+    goto FAIL
+)
+echo 可用空间：!AVAILABLE_KB_NUM! KB + 原 Web：!OLD_WEB_KB_NUM! KB >= 新 Web：!NEW_KB_NUM! KB，空间检查通过。
+del /q "%TEMP%\zxic-web-size.txt" >nul 2>&1
+
+!ADB_TARGET! shell mount -o rw,remount /
+if errorlevel 1 (
+    echo [错误] 设备根目录重新挂载为可写失败。
+    goto FAIL
+)
+!ADB_TARGET! shell touch "%DEVICE_WEB%/.zxic_write_test" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 设备 Web 目录不可写。
+    goto FAIL
+)
+!ADB_TARGET! shell ls "%DEVICE_WEB%/.zxic_write_test" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 写入测试文件校验失败。
+    goto FAIL
+)
+!ADB_TARGET! shell rm -f "%DEVICE_WEB%/.zxic_write_test" >nul 2>&1
+
+echo.
+echo 即将删除设备原 Web 目录并刷入新版本。
+echo 原目录备份：%BACKUP_DIR%
+echo 请确认设备保持连接且不要执行其他操作。
+set /p "CONFIRM=确认刷入请输入大写 Y，其他输入取消: "
+if not "!CONFIRM!" == "Y" (
+    echo 已取消刷入，原 Web 未被修改。
+    goto END
 )
 
-ECHO 正在关闭ADB 
-curl -m 10 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=0"
-curl -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=0"
-TIMEOUT /t 2 > nul
-ECHO 正在重启设备 
-curl -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=REBOOT_DEVICE"
-GOTO END
+echo [9/10] 正在替换设备 Web 后台...
+!ADB_TARGET! shell rm -rf "%DEVICE_WEB%"
+if errorlevel 1 goto RECOVER
+!ADB_TARGET! push "%WEB_DIR%" "%DEVICE_WEB%" >nul
+if errorlevel 1 goto RECOVER
 
+!ADB_TARGET! shell ls "%DEVICE_WEB%/index.html" >nul 2>&1
+if errorlevel 1 goto RECOVER
 
+echo [10/10] 新 Web 后台验证成功。
+echo 新后台地址：http://%DEVICE_IP%
+set /p "DISABLE=请输入大写 Y 关闭设备 ADB，其他输入保持开启: "
+if "!DISABLE!" == "Y" (
+    set "HTTP_RES="
+    for /f "delims=" %%A in ('curl --fail-with-body -m 10 -s -G --data-urlencode "goformId=SET_DEVICE_MODE" --data-urlencode "debug_enable=0" "%SET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+    echo !HTTP_RES!| findstr /c:"set_devicemode successfully" >nul
+    if errorlevel 1 echo [警告] 关闭 ADB 请求未确认成功。
+    curl --fail-with-body -m 5 -s -G --data-urlencode "goformId=REBOOT_DEVICE" "%SET_URL%" >nul 2>&1
+)
+echo 安装完成。
+goto END
 
+:RECOVER
+echo [严重错误] 新 Web 刷入或验证失败，正在恢复原后台...
+!ADB_TARGET! shell rm -rf "%DEVICE_WEB%" >nul 2>&1
+!ADB_TARGET! push "%BACKUP_DIR%\." "%DEVICE_WEB%" >nul 2>&1
+if errorlevel 1 goto RECOVER_FAILED
+!ADB_TARGET! shell ls "%DEVICE_WEB%/index.html" >nul 2>&1
+if errorlevel 1 goto RECOVER_FAILED
+echo 原 Web 后台已恢复，请不要重启设备，先确认设备状态。
+goto FAIL
 
+:RECOVER_FAILED
+echo [严重错误] 自动恢复失败。
+echo 请勿重启设备，保留以下备份并寻求 ADB 协助：%BACKUP_DIR%
+goto FAIL
 
+:ENABLE_ERROR
+set "HTTP_RES="
+for /f "delims=" %%A in ('curl --fail-with-body -m 10 -s -G --data-urlencode "goformId=SET_DEVICE_MODE" --data-urlencode "debug_enable=0" "%SET_URL%" 2^>nul') do set "HTTP_RES=%%A"
+curl --fail-with-body -m 5 -s -G --data-urlencode "goformId=REBOOT_DEVICE" "%SET_URL%" >nul 2>&1
+echo [错误] 开启 ADB 失败，已尝试关闭调试模式并重启设备。
 
+goto FAIL
 
-:enable_adb_error
-ECHO 开启ADB命令执行失败, 正在尝试恢复, 请等待脚本自行完毕, 以避免设备变砖 
-curl -m 10 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=0"
-curl -m 10 -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=0"
-curl -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=SET_DEVICE_MODE&debug_enable=0"
-TIMEOUT /t 5 > nul
-curl -s -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6" -H "'Content-Type: application/x-www-form-urlencoded; charset=UTF-8" "http://%_device_ip%/goform/goform_set_cmd_process?goformId=REBOOT_DEVICE"
-
+:FAIL
+echo.
+echo 安装未完成，原 Web 目录未主动删除（若已发生刷写失败则请查看恢复结果）。
 :END
-ECHO 按任意键退出 
-PAUSE
+endlocal
+pause
